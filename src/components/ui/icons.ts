@@ -1,4 +1,3 @@
-import { SITE } from '../../site.ts';
 // Icons from Lucide (https://lucide.dev), ISC License.
 // Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as part of Feather (MIT).
 // All other copyright (c) for Lucide are held by Lucide Contributors 2022.
@@ -88,7 +87,9 @@ export function statusShape(status: ShapeName, size: IconSize = 16, cls = ''): s
 }
 
 /** The placeholder logo mark (CRAFT-02): 32-unit plate, radius 8, an "i" from the pictogram geometry. */
+let markUses = 0;
+/** The product logo: a drawn mark on its own color tile (the same in light and dark), never an icon-set glyph. */
 export function markSvg(cls = 'logo__mark', size = 32): string {
-  // The tool's pictogram, white on the blue tile (the suite's services-sign vernacular, one sign per product).
-  return `<svg class="${cls}" width="${size}" height="${size}" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect class="mark__plate" width="32" height="32" rx="8"/><g class="mark__stroke" transform="translate(6 6) scale(0.8333)" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${PATHS[SITE.mark]}</g></svg>`;
+  const m = `logo-m${markUses++}`; // unique per use: the header and the footer both draw it
+  return `<svg class="${cls}" width="${size}" height="${size}" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><rect width="48" height="48" rx="12" fill="#1B4DC1"/><path d="M24 41.5s-12.5-11.6-12.5-21.5a12.5 12.5 0 0 1 25 0c0 9.9-12.5 21.5-12.5 21.5z" fill="#FFFFFF"/><path d="M17.6 20.2a9 9 0 0 1 12.8 0M20.8 23.4a4.5 4.5 0 0 1 6.4 0" fill="none" stroke="#1B4DC1" stroke-width="2.8" stroke-linecap="round"/><circle cx="24" cy="26.6" r="2.2" fill="#1E7A46"/></svg>`;
 }
