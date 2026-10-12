@@ -1,0 +1,20 @@
+---
+// MapFrame (DESIGN-SYSTEM 3.17). The client script in CityExplorer fills the map and moves this frame between
+// the phone band and the full-screen dialog. Legend items use the marker drawings (CRAFT-10).
+import { statusShape, type Status } from '../ui/icons';
+import { FEE_LABEL } from './labels';
+
+const KEY: Status[] = ['free', 'customers', 'unknown'];
+---
+<div class="mapframe" id="mapframe" data-state="loading">
+  <div class="mapframe__map" id="map" role="region" aria-label="Map of the places in the list. The list has the same places and more detail."></div>
+  <ul class="legend js-only" aria-label="Map key">
+    {KEY.map((s) => <li class="legend__item"><Fragment set:html={statusShape(s, 16, 'shape--marker')} />{FEE_LABEL[s]}</li>)}
+    <li class="legend__item" id="legend-location" hidden><Fragment set:html={statusShape('location', 16)} />Your location</li>
+  </ul>
+  <button class="mapframe__open js-only" id="map-open-band" type="button" tabindex="-1" aria-hidden="true"></button>
+  <button class="btn btn--secondary btn--sm mapframe__area" id="map-area" type="button" hidden>Show places in this area</button>
+  <div class="mapframe__overlay js-only"><p class="status" id="map-status" role="status">Loading map…</p></div>
+  <div class="mapframe__overlay no-js-only"><p class="status">The map needs JavaScript. Every place is in the list.</p></div>
+  <slot />
+</div>

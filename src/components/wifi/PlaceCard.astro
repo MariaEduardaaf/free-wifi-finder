@@ -1,0 +1,12 @@
+---
+// PlaceCard (DESIGN-SYSTEM 3.18): the selected place, over the desktop map and at the bottom of the full-screen
+// phone map. The client fills it from the same helpers as the rows (row.ts).
+import IconButton from '../ui/IconButton.astro';
+---
+<section class="placecard" id="placecard" aria-labelledby="pc-title" hidden>
+  <h3 class="placecard__title" id="pc-title" tabindex="-1"></h3>
+  <IconButton icon="x" label="Close" quiet class="placecard__close" id="pc-close" />
+  <p class="row__meta" id="pc-meta"></p>
+  <p class="row__status" id="pc-status"></p>
+  <div class="placecard__actions" id="pc-actions"></div>
+</section>

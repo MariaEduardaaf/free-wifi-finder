@@ -1,0 +1,539 @@
+---
+// The WiFi city tool (wifi-city 6, 7, 9): one grid whose children are, in DOM order, the header, controls, list
+// header, list and map. The server renders the 20 best rows with the same rowHTML() the client uses.
+import 'leaflet/dist/leaflet.css';
+import './wifi.css';
+import ToolHeader from '../ui/ToolHeader.astro';
+import Button from '../ui/Button.astro';
+import TextField from '../ui/TextField.astro';
+import Select from '../ui/Select.astro';
+import Chip from '../ui/Chip.astro';
+import Sheet from '../ui/Sheet.astro';
+import EmptyState from '../ui/EmptyState.astro';
+import MapFrame from './MapFrame.astro';
+import PlaceCard from './PlaceCard.astro';
+import { rowHTML } from './row';
+import { compareDefault, type Place } from './sort';
+import { FEE_LABEL, TYPE_GROUPS, group, groupLabel, type Fee } from './labels';
+
+interface Props {
+  city: { name: string; state: string; center: number[] };
+  places: Place[];
+}
+const { city, places } = Astro.props;
+const label = `${city.name}, ${city.state}`;
+const n = places.length;
+const FEES: Fee[] = ['free', 'customers', 'unknown'];
+const byFee = (f: Fee) => places.filter((p) => p.fee === f).length;
+
+// Type groups with at least 3 places in this city, by count then label; everything else is "Other places".
+const size = new Map<string, number>();
+for (const p of places) size.set(group(p.category), (size.get(group(p.category)) ?? 0) + 1);
+const types = TYPE_GROUPS.filter((g) => (size.get(g) ?? 0) >= 3)
+  .sort((a, b) => size.get(b)! - size.get(a)! || groupLabel(a).localeCompare(groupLabel(b), 'en'));
+const other = n - types.reduce((sum, g) => sum + size.get(g)!, 0);
+const typeOptions = [
+  { value: '', label: `All types (${n})` },
+  ...types.map((g) => ({ value: g, label: `${groupLabel(g)} (${size.get(g)})` })),
+  ...(other ? [{ value: 'other', label: `Other places (${other})` }] : []),
+];
+
+const first = [...places].sort(compareDefault).slice(0, 20);
+const json = JSON.stringify({ label, center: city.center, types, places }).replace(/</g, '\\u003c');
+---
+<section class="wifi-tool" aria-label={`Places with public WiFi in ${city.name}`}>
+  <ToolHeader h1={`Free WiFi in ${label.replace(/ /g, '\u00a0')}`} lede={`${byFee('free')} of ${n} places say their WiFi is free for everyone.`} />
+
+  <div class="wifi-controls" id="controls">
+    <div class="wifi-controls__row js-only">
+      <Button variant="primary" size="sm" icon="locate-fixed" id="near">Find places near me</Button>
+      <Button variant="secondary" size="sm" icon="sliders-horizontal" class="wifi-phone" id="filters-open">Filters</Button>
+    </div>
+    <p class="status js-only" id="near-status" role="status">Your location stays on this device.</p>
+    <div class="wifi-filters js-only" id="filters">
+      <TextField id="q" label="Search by name" type="search" icon="search" placeholder="e.g. Starbucks" autocomplete="off" />
+      <Select id="type" label="Type of place" options={typeOptions} />
+      <fieldset class="wifi-who">
+        <legend class="field__label">Who can use it</legend>
+        <div class="chips">
+          <Chip kind="radio" name="who" value="all" label="All" count={n} countUnit="places" checked />
+          {FEES.map((f) => <Chip kind="radio" name="who" value={f} label={FEE_LABEL[f]} shape={f} count={byFee(f)} countUnit="places" />)}
+        </div>
+      </fieldset>
+    </div>
+  </div>
+
+  <div class="wifi-listhead">
+    <div class="wifi-listhead__row">
+      <h2 id="places-title">Places</h2>
+      <Button variant="secondary" size="sm" icon="map" class="wifi-phone js-only" id="map-open">Show map</Button>
+    </div>
+    <p class="status js-only" id="list-status" role="status">Showing {first.length} of {n}, free for everyone first.</p>
+    <p class="status no-js-only">Showing {first.length} of {n}, free for everyone first. Turn on JavaScript to search, filter, see the map and the other {n - first.length} places.</p>
+    <a class="wifi-skip" href="#after-list">Skip the list</a>
+  </div>
+
+  <div class="wifi-results">
+    <ol class="rows" id="rows" aria-labelledby="places-title" set:html={first.map((p) => rowHTML(p)).join('')} />
+    <div id="empty" hidden>
+      <EmptyState icon="search" title="No places match" body="Clear the search or the filters to see more places.">
+        <Fragment slot="actions"><Button variant="secondary" id="empty-action">Clear filters</Button></Fragment>
+      </EmptyState>
+    </div>
+    <div class="wifi-more js-only"><Button variant="secondary" size="sm" id="more" hidden={n <= 20}>Show 20 more places</Button></div>
+  </div>
+
+  <div class="wifi-mapcell" id="mapcell"><MapFrame><PlaceCard /></MapFrame></div>
+</section>
+<span id="after-list" tabindex="-1"></span>
+
+<Sheet id="filters-sheet" title="Filter places">
+  <div id="filters-slot"></div>
+  <Fragment slot="foot">
+    <Button variant="primary" block id="sheet-show" data-close>Show {n} places</Button>
+    <Button variant="quiet" size="sm" id="sheet-clear">Clear filters</Button>
+  </Fragment>
+</Sheet>
+
+<dialog class="sheet sheet--full wifi-mapsheet" id="map-sheet" aria-labelledby="map-sheet-title">
+  <div class="sheet__head">
+    <h2 class="sheet__title" id="map-sheet-title" tabindex="-1">Map: {label}</h2>
+    <Button variant="secondary" size="sm" icon="list" data-close>Show list</Button>
+  </div>
+  <div class="wifi-mapsheet__body" id="map-sheet-body"></div>
+</dialog>
+
+<script type="application/json" id="wifi-data" set:html={json} />
+
+<script>
+  import L from 'leaflet';
+  import { openSheet, closeSheet, initSheets } from '../ui/sheet';
+  import { setStatus } from '../ui/status';
+  import { icon } from '../ui/icons';
+  import { rowHTML, metaHTML, statusHTML, cardActionsHTML } from './row';
+  import { compareDefault, sortByDistance, type Place } from './sort';
+  import { catPlural, group, type Fee } from './labels';
+  import { markerIcon, locationIcon, markState } from './markers';
+
+  type Item = Place & { key: string; type: string };
+  type Hit = { place: Item; mi?: number };
+  type Action = { label: string; onClick: () => void };
+
+  const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
+  const data = JSON.parse($('wifi-data').textContent!) as { label: string; center: [number, number]; types: string[]; places: Place[] };
+  // Search ignores case, accents and the apostrophe style ("applebee's" finds "Applebee’s")
+  const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').replace(/[’‘ʼ`´]/g, "'").toLowerCase().trim();
+  const all: Item[] = data.places.map((p) => {
+    const g = group(p.category);
+    return { ...p, key: fold(p.name), type: data.types.includes(g) ? g : 'other' };
+  });
+  const byId = new Map(all.map((p) => [p.id, p]));
+  const PAGE = 20;
+  const FEES: Fee[] = ['free', 'customers', 'unknown'];
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const wide = matchMedia('(min-width: 64rem)');
+
+  // ---------- State: read from the URL (invalid values ignored), written back with replaceState ----------
+  const url = new URLSearchParams(location.search);
+  const s = {
+    q: (url.get('q') ?? '').slice(0, 80),
+    who: (FEES as string[]).includes(url.get('who') ?? '') ? (url.get('who') as Fee) : ('' as Fee | ''),
+    type: [...data.types, 'other'].includes(url.get('type') ?? '') ? url.get('type')! : '',
+    sort: 'default' as 'default' | 'near' | 'area',
+  };
+  let hits: Hit[] = [];
+  let shown = 0;
+  let origin: [number, number] | null = null;
+  let areaCenter: L.LatLng | null = null;
+  let selected: string | null = null;
+  let lit: string | null = null;
+  let cardOpener: HTMLElement | null = null;
+  let toList: string | null = null;
+  let userMoved = false;
+
+  const rowsEl = $<HTMLOListElement>('rows'), listStatus = $('list-status'), nearStatus = $('near-status');
+  const q = $<HTMLInputElement>('q'), typeSel = $<HTMLSelectElement>('type');
+  const who = [...document.querySelectorAll<HTMLInputElement>('input[name="who"]')];
+  const moreBtn = $<HTMLButtonElement>('more'), empty = $('empty'), nearBtn = $<HTMLButtonElement>('near');
+  const filters = $('filters'), filtersBtn = $<HTMLButtonElement>('filters-open'), filtersSheet = $<HTMLDialogElement>('filters-sheet');
+  const frame = $('mapframe'), mapEl = $('map'), mapSheet = $<HTMLDialogElement>('map-sheet');
+  const card = $('placecard'), areaBtn = $<HTMLButtonElement>('map-area'), mapStatus = $('map-status');
+  const rowOf = (id: string | null) => (id ? rowsEl.querySelector<HTMLElement>(`[data-id="${CSS.escape(id)}"]`) : null);
+  const titleOf = (id: string | null) => rowOf(id)?.querySelector<HTMLButtonElement>('button.row__target') ?? null;
+
+  /** A plain status line, with an optional quiet action (errors use setStatus, with its icon). */
+  function line(el: HTMLElement, text: string, action?: Action) {
+    el.setAttribute('role', 'status');
+    el.classList.remove('status--error', 'status--info', 'status--success', 'sr-only');
+    el.classList.toggle('status--action', Boolean(action));
+    el.textContent = text;
+    if (!action) return;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn btn--quiet btn--sm';
+    b.textContent = action.label;
+    b.addEventListener('click', action.onClick);
+    el.append(' ', b);
+  }
+  const fail = (el: HTMLElement, text: string, action?: Action) => { el.setAttribute('role', 'alert'); setStatus(el, 'error', text, action); };
+
+  // ---------- Map ----------
+  const map = L.map(mapEl, {
+    zoomControl: false, attributionControl: false, scrollWheelZoom: false, tapHold: false,
+    fadeAnimation: !reduce, zoomAnimation: !reduce, markerZoomAnimation: !reduce, inertia: !reduce,
+  }).setView(data.center, 12);
+  const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+  const attribution = L.control.attribution({ prefix: false, position: 'topright' })
+    .addAttribution('© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>').addTo(map);
+  const zoom = L.control.zoom({ position: 'bottomright', zoomInText: icon('plus'), zoomOutText: icon('minus') });
+  const layer = L.layerGroup().addTo(map);
+  const markers = new Map<string, L.Marker>();
+  let you: L.Marker | null = null;
+
+  // Loading until the first tile arrives; an error when every tile in view failed, or after 10 s without one.
+  // The list never waits.
+  let loaded = false, timer = 0;
+  const mapFailed = () => {
+    if (loaded) return;
+    frame.dataset.state = 'error';
+    setStatus(mapStatus, 'error', 'The map didn’t load. Every place is still in the list.', { label: 'Try again', onClick: mapRetry });
+  };
+  function mapRetry() {
+    frame.dataset.state = 'loading';
+    line(mapStatus, 'Loading map…');
+    clearTimeout(timer);
+    timer = window.setTimeout(mapFailed, 10000);
+    tiles.redraw();
+  }
+  timer = window.setTimeout(mapFailed, 10000);
+  tiles.on('tileload', () => { if (!loaded) { loaded = true; clearTimeout(timer); frame.dataset.state = 'ready'; } });
+  tiles.on('load', () => { if (!loaded) mapFailed(); }); // "load" also fires when every tile in view errored
+
+  // Phones: an inert preview band, or the full-screen dialog; desktop: the sticky frame. Same map element.
+  function setMode(mode: 'band' | 'full' | 'desk') {
+    frame.dataset.mode = mode;
+    const on = mode !== 'band';
+    for (const h of [map.dragging, map.touchZoom, map.doubleClickZoom, map.boxZoom, map.keyboard]) on ? h.enable() : h.disable();
+    mode === 'full' ? map.scrollWheelZoom.enable() : map.scrollWheelZoom.disable();
+    mapEl.inert = !on;
+    on ? mapEl.removeAttribute('aria-hidden') : mapEl.setAttribute('aria-hidden', 'true');
+    zoom.remove(); // re-added after the attribution, so it stacks above it in the corner
+    attribution.setPosition(on ? 'bottomright' : 'topright');
+    if (on) zoom.addTo(map);
+    areaBtn.hidden = true;
+    userMoved = false;
+  }
+
+  function fitMap(animate = !reduce) {
+    const pts = [...markers.values()].map((m) => m.getLatLng());
+    if (origin && s.sort === 'near') pts.push(L.latLng(origin));
+    if (!pts.length) return;
+    const band = frame.dataset.mode === 'band';
+    const legend = frame.querySelector<HTMLElement>('.legend')!.offsetHeight;
+    userMoved = false;
+    map.fitBounds(L.latLngBounds(pts), {
+      paddingTopLeft: [24, band ? 24 : legend + 32], paddingBottomRight: [24, band ? 56 : 24], maxZoom: 15, animate,
+    });
+  }
+
+  function addMarker(p: Item) {
+    const m = L.marker([p.lat, p.lon], { icon: markerIcon(p.fee), keyboard: false });
+    m.on('click', () => { cardOpener = null; select(p.id, { scroll: wide.matches, focus: true }); });
+    m.on('mouseover', () => highlight(p.id, true));
+    m.on('mouseout', () => highlight(null));
+    layer.addLayer(m);
+    markers.set(p.id, m);
+  }
+
+  function placeYou() {
+    you?.remove();
+    you = L.marker(origin!, { icon: locationIcon(), interactive: false, keyboard: false, zIndexOffset: -1000 }).addTo(map);
+    $('legend-location').hidden = false;
+  }
+
+  // "Show places in this area" appears after the visitor pans or zooms (never after our own moves)
+  const moved = () => { userMoved = true; };
+  mapEl.addEventListener('pointerdown', moved, { passive: true });
+  mapEl.addEventListener('wheel', moved, { passive: true });
+  mapEl.addEventListener('keydown', (e) => { if (/^(Arrow|\+|-|=)/.test(e.key)) moved(); });
+  map.on('moveend', () => {
+    if (userMoved && frame.dataset.mode !== 'band') areaBtn.hidden = false;
+    userMoved = false;
+  });
+  areaBtn.addEventListener('click', () => {
+    areaCenter = map.getCenter();
+    s.sort = 'area';
+    render(false);
+    areaBtn.hidden = true;
+    line(nearStatus, 'Sorted by distance from the center of the map.', { label: 'Sort free first instead', onClick: sortFree });
+  });
+
+  // ---------- Selection, highlight and the place card ----------
+  function highlight(id: string | null, fromMarker = false) {
+    if (lit) { markState(markers.get(lit), 'is-highlighted', false); rowOf(lit)?.classList.remove('is-highlighted'); }
+    lit = id;
+    if (!id) return;
+    markState(markers.get(id), 'is-highlighted', true);
+    if (fromMarker) rowOf(id)?.classList.add('is-highlighted');
+  }
+
+  function deselect() {
+    if (!selected) return;
+    rowOf(selected)?.removeAttribute('aria-current');
+    markState(markers.get(selected), 'is-selected', false);
+    selected = null;
+  }
+
+  function select(id: string, o: { pan?: boolean; scroll?: boolean; focus?: boolean } = {}) {
+    deselect();
+    selected = id;
+    const p = byId.get(id)!;
+    const row = rowOf(id);
+    row?.setAttribute('aria-current', 'true');
+    markState(markers.get(id), 'is-selected', true);
+    if (o.scroll) row?.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+    $('pc-title').textContent = p.name;
+    $('pc-meta').innerHTML = metaHTML(p, hits.find((h) => h.place.id === id)?.mi);
+    $('pc-status').innerHTML = statusHTML(p);
+    $('pc-actions').innerHTML = cardActionsHTML(p);
+    card.hidden = false;
+    if (frame.dataset.mode === 'full') frame.style.setProperty('--card-h', `${card.offsetHeight + 16}px`);
+    if (o.pan) { userMoved = false; map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15), { animate: !reduce }); }
+    if (o.focus) $('pc-title').focus({ preventScroll: true });
+  }
+
+  function closeCard(restoreFocus = true) {
+    if (card.hidden) return;
+    card.hidden = true;
+    frame.style.removeProperty('--card-h');
+    const id = selected;
+    deselect();
+    if (!restoreFocus) return;
+    const back = frame.dataset.mode === 'full' ? $('map-sheet-title') : cardOpener ?? titleOf(id);
+    back?.focus({ preventScroll: true });
+  }
+  $('pc-close').addEventListener('click', () => closeCard());
+  card.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeCard(); } });
+  card.addEventListener('click', (e) => {
+    if (!(e.target as HTMLElement).closest('[data-to-list]')) return;
+    toList = selected;
+    closeSheet(mapSheet);
+  });
+
+  // ---------- Full-screen map (phones) ----------
+  function openFull(opener: HTMLElement, id?: string) {
+    $('map-sheet-body').append(frame);
+    setMode('full');
+    openSheet(mapSheet, opener);
+    map.invalidateSize({ pan: false });
+    if (id) select(id, { pan: true, focus: true }); else fitMap(false);
+  }
+  mapSheet.addEventListener('close', () => {
+    closeCard(false);
+    $('mapcell').append(frame);
+    setMode(wide.matches ? 'desk' : 'band');
+    map.invalidateSize({ pan: false });
+    fitMap(false);
+    if (!toList) return;
+    const b = titleOf(toList);
+    toList = null;
+    b?.scrollIntoView({ block: 'center' });
+    b?.focus({ preventScroll: true });
+  });
+  $('map-open').addEventListener('click', (e) => openFull(e.currentTarget as HTMLElement));
+  $('map-open-band').addEventListener('click', () => openFull($('map-open')));
+
+  // ---------- List ----------
+  const phrase = (k: number) => {
+    let t = s.type ? catPlural(s.type, k) : k === 1 ? 'place' : 'places';
+    if (s.who === 'free') t += ' free for everyone';
+    if (s.who === 'customers') t = `customers-only ${t}`;
+    if (s.who === 'unknown') t += ' where you should ask staff';
+    return fold(s.q) ? `${t} matching “${s.q.trim()}”` : t;
+  };
+  const filtered = () => Boolean(fold(s.q) || s.who || s.type);
+
+  function statusLine() {
+    const k = hits.length;
+    if (!k) return;
+    const sortNote = s.sort === 'default' ? ', free for everyone first' : '';
+    if (!filtered()) return line(listStatus, shown >= k ? `Showing all ${k}.` : `Showing ${shown} of ${k}${sortNote}.`);
+    const text = k === 1 ? `Showing 1 ${phrase(1)}.` : shown >= k ? `Showing all ${k} ${phrase(k)}.` : `Showing ${shown} of ${k} ${phrase(k)}.`;
+    line(listStatus, text, { label: 'Clear filters', onClick: clearFilters });
+  }
+
+  function showMore(focus = true) {
+    const next = hits.slice(shown, shown + PAGE);
+    rowsEl.insertAdjacentHTML('beforeend', next.map((h) => rowHTML(h.place, { mi: h.mi, interactive: true })).join(''));
+    for (const h of next) addMarker(h.place);
+    if (focus && next.length) titleOf(next[0].place.id)?.focus();
+    shown += next.length;
+    const left = hits.length - shown;
+    moreBtn.hidden = left <= 0;
+    moreBtn.querySelector('span')!.textContent = left > PAGE ? 'Show 20 more places' : left === 1 ? 'Show the last place' : `Show the last ${left} places`;
+    statusLine();
+  }
+
+  function counts() {
+    const term = fold(s.q);
+    const base = all.filter((p) => !term || p.key.includes(term));
+    const whoBase = base.filter((p) => !s.type || p.type === s.type);
+    for (const input of who) {
+      const n = input.value === 'all' ? whoBase.length : whoBase.filter((p) => p.fee === input.value).length;
+      input.closest('.chip')!.querySelector('.chip__count')!.innerHTML = `<span class="sr-only">, </span>${n}<span class="sr-only"> places</span>`;
+      input.disabled = n === 0 && !input.checked;
+    }
+    const typeBase = base.filter((p) => !s.who || p.fee === s.who);
+    for (const o of typeSel.options) {
+      const n = o.value ? typeBase.filter((p) => p.type === o.value).length : typeBase.length;
+      o.textContent = o.textContent!.replace(/\(\d+\)$/, `(${n})`);
+      o.disabled = n === 0 && !o.selected;
+    }
+    const active = [fold(s.q), s.who, s.type].filter(Boolean).length;
+    filtersBtn.querySelector('span')!.textContent = active ? `Filters (${active})` : 'Filters';
+    const k = hits.length;
+    $('sheet-show').querySelector('span')!.textContent = `Show ${k} ${k === 1 ? 'place' : 'places'}`;
+  }
+
+  function emptyState() {
+    const zero = hits.length === 0;
+    empty.hidden = !zero;
+    rowsEl.hidden = zero;
+    if (!zero) return;
+    const term = s.q.trim(), other = Boolean(s.who || s.type);
+    const [title, body, action] = !other
+      ? [`No places match “${term}”`, 'Check the spelling, or search for part of the name.', 'Clear search']
+      : !fold(term)
+        ? ['No places match these filters', 'Try another type of place, or show all places.', 'Clear filters']
+        : ['No places match', 'Clear the search or the filters to see more places.', 'Clear filters'];
+    empty.querySelector('.empty__title')!.textContent = title;
+    empty.querySelector('.empty__body')!.textContent = body;
+    empty.querySelector('.tile')!.innerHTML = icon(other ? 'sliders-horizontal' : 'search', 24);
+    $('empty-action').querySelector('span')!.textContent = action;
+    // The empty state carries the message; the status line still announces it
+    line(listStatus, `${title}.`);
+    listStatus.classList.add('sr-only');
+  }
+
+  function syncUrl() {
+    const u = new URL(location.href);
+    const params: [string, string][] = [['q', s.q.trim()], ['who', s.who], ['type', s.type], ['sort', s.sort === 'near' ? 'near' : '']];
+    for (const [k, v] of params) v ? u.searchParams.set(k, v) : u.searchParams.delete(k);
+    history.replaceState(history.state, '', u);
+  }
+
+  function order(list: Item[]): Hit[] {
+    if (s.sort === 'near' && origin) return sortByDistance(list, origin[0], origin[1]);
+    if (s.sort === 'area' && areaCenter) return sortByDistance(list, areaCenter.lat, areaCenter.lng).map(({ place }) => ({ place }));
+    return list.sort(compareDefault).map((place) => ({ place }));
+  }
+
+  /** Any filter or sort change: page 1, markers follow, the map refits (not after an area sort). */
+  function render(fit = true) {
+    const term = fold(s.q);
+    hits = order(all.filter((p) => (!term || p.key.includes(term)) && (!s.who || p.fee === s.who) && (!s.type || p.type === s.type)));
+    closeCard(false);
+    highlight(null);
+    rowsEl.replaceChildren();
+    layer.clearLayers();
+    markers.clear();
+    shown = 0;
+    showMore(false);
+    counts();
+    emptyState();
+    syncUrl();
+    if (fit) fitMap();
+  }
+
+  function clearFilters() {
+    s.q = ''; s.who = ''; s.type = '';
+    q.value = '';
+    typeSel.value = '';
+    who.forEach((i) => { i.checked = i.value === 'all'; });
+    render();
+  }
+
+  rowsEl.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button.row__target');
+    if (!b) return;
+    const id = b.closest<HTMLElement>('.venue')!.dataset.id!;
+    cardOpener = b;
+    if (wide.matches) select(id, { pan: true, focus: true }); else openFull(b, id);
+  });
+  rowsEl.addEventListener('mouseover', (e) => { if (wide.matches) highlight((e.target as HTMLElement).closest<HTMLElement>('.venue')?.dataset.id ?? null); });
+  rowsEl.addEventListener('mouseleave', () => highlight(null));
+  rowsEl.addEventListener('focusin', (e) => { if (wide.matches) highlight((e.target as HTMLElement).closest<HTMLElement>('.venue')?.dataset.id ?? null); });
+  rowsEl.addEventListener('focusout', () => highlight(null));
+  moreBtn.addEventListener('click', () => showMore());
+
+  // ---------- Filters ----------
+  q.value = s.q;
+  typeSel.value = s.type;
+  who.forEach((i) => { i.checked = i.value === (s.who || 'all'); });
+  let debounce = 0;
+  q.addEventListener('input', () => { clearTimeout(debounce); debounce = window.setTimeout(() => { s.q = q.value; render(); }, 150); });
+  typeSel.addEventListener('change', () => { s.type = typeSel.value; render(); });
+  who.forEach((i) => i.addEventListener('change', () => { s.who = i.value === 'all' ? '' : (i.value as Fee); render(); }));
+  $('empty-action').addEventListener('click', () => {
+    if (s.who || s.type) return clearFilters();
+    s.q = ''; q.value = ''; render(); q.focus();
+  });
+  $('sheet-clear').addEventListener('click', clearFilters);
+  filtersBtn.addEventListener('click', () => openSheet(filtersSheet, filtersBtn));
+
+  // ---------- Find places near me (DESIGN-SYSTEM 4.4); the position never leaves the page ----------
+  const HELP = 'Your location stays on this device.';
+  function busy(on: boolean) {
+    nearBtn.disabled = on;
+    on ? nearBtn.setAttribute('aria-busy', 'true') : nearBtn.removeAttribute('aria-busy');
+    nearBtn.querySelector('svg')!.outerHTML = on ? icon('loader-circle', 20, 'btn__spinner') : icon('locate-fixed');
+    nearBtn.querySelector('span')!.textContent = on ? 'Finding your location…' : 'Find places near me';
+  }
+  function sortFree() {
+    s.sort = 'default';
+    render();
+    line(nearStatus, HELP);
+  }
+  function locate() {
+    busy(true);
+    line(nearStatus, HELP);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        busy(false);
+        origin = [pos.coords.latitude, pos.coords.longitude];
+        s.sort = 'near';
+        placeYou();
+        render();
+        line(nearStatus, 'Nearest first, from your location.', { label: 'Sort free first instead', onClick: sortFree });
+      },
+      (err) => {
+        busy(false);
+        if (err.code === err.PERMISSION_DENIED) fail(nearStatus, 'Location is off for this site. You can turn it on in your browser settings, or browse the list.');
+        else fail(nearStatus, 'We couldn’t get your location. Try again, or browse the list.', { label: 'Try again', onClick: locate });
+      },
+      { timeout: 10000, maximumAge: 300000 },
+    );
+  }
+  if ('geolocation' in navigator) nearBtn.addEventListener('click', locate);
+  else { nearBtn.remove(); nearStatus.remove(); }
+
+  // ---------- Layout by width: one filter group and one map, moved between containers ----------
+  function arrange() {
+    if (wide.matches) {
+      if (filtersSheet.open) closeSheet(filtersSheet);
+      if (mapSheet.open) closeSheet(mapSheet);
+      $('controls').append(filters);
+    } else {
+      $('filters-slot').append(filters);
+    }
+    if (!mapSheet.open) setMode(wide.matches ? 'desk' : 'band');
+    map.invalidateSize({ pan: false });
+  }
+  wide.addEventListener('change', () => { arrange(); fitMap(false); });
+
+  initSheets();
+  arrange();
+  render(false);
+  fitMap(false);
+  if (url.get('sort') === 'near' && 'geolocation' in navigator) locate();
+</script>

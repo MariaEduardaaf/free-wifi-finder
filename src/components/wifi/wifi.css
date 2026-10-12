@@ -1,0 +1,199 @@
+/* WiFi pages (W). Layout first, then the tool's own components: VenueRow (3.11), MapFrame with its legend and
+   markers (3.17, 2.6), PlaceCard (3.18). Token values only; kit classes are used as they are. */
+
+/* ---------- Hub layout (wifi-hub 3, 6) ---------- */
+
+.wifi-near { display: flex; flex-direction: column; gap: var(--space-2); max-width: var(--measure-lede); }
+.wifi-near > :first-child { flex: none; }
+.wifi-search { max-width: var(--measure-lede); margin-top: var(--space-5); }
+.wifi-pick { margin-top: var(--space-6); }
+.wifi-pick > * + * { margin-top: var(--space-4); }
+.wifi-cities { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
+.wifi-statuslist li { display: grid; grid-template-columns: var(--icon-sm) minmax(0, 1fr); column-gap: var(--space-2); }
+.wifi-statuslist .shape { margin-top: calc((var(--lh-prose) - var(--icon-sm)) / 2); }
+@media (min-width: 40rem) { .wifi-cities { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 64rem) {
+  .wifi-near { flex-direction: row; align-items: center; gap: var(--space-4); }
+  .wifi-pick { margin-top: var(--space-7); }
+  .wifi-cities { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-5); }
+  /* Note: ContentLayout caps every child at the 40rem measure, which also caps the 728px leaderboard. */
+  .wifi-content .adslot--leaderboard { max-width: 728px; }
+}
+
+/* ---------- City tool layout (wifi-city 3, 6) ---------- */
+
+.wifi-tool {
+  display: grid; grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "head" "controls" "listhead" "map" "list";
+}
+.wifi-tool > .tool-header { grid-area: head; }
+.wifi-controls { grid-area: controls; }
+.wifi-controls__row { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.wifi-controls > .status { margin-top: var(--space-2); }
+/* Note: in an InlineStatus with an action, the message wraps below its icon; keep icon and message on
+   one line and give the action the next one (DESIGN-SYSTEM 3.25, "a row of their own") */
+:is(.wifi-near, .wifi-controls, .mapframe) .status--action > span { flex: 1 1 calc(100% - var(--icon-sm) - var(--space-3)); }
+.wifi-filters { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
+.wifi-controls .wifi-filters { margin-top: var(--space-4); }
+.wifi-who .chips { margin-top: var(--space-2); }
+.wifi-listhead { grid-area: listhead; margin-top: var(--space-5); }
+html:not(.js) .wifi-listhead { margin-top: 0; } /* no controls without JavaScript: lede, 24px, list header */
+.wifi-listhead__row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); min-height: var(--control-sm); }
+.wifi-listhead .status { margin-top: var(--space-1); }
+.wifi-mapcell { grid-area: map; height: 10rem; margin-top: var(--space-3); }
+.wifi-results { grid-area: list; margin-top: var(--space-3); }
+.wifi-more { display: grid; margin-top: var(--space-4); }
+.wifi-skip:not(:focus) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.wifi-skip:focus { display: inline-flex; align-items: center; min-height: var(--control-sm); }
+
+/* Below 380px "Filters" moves under "Find places near me", both full width */
+@media (width < 23.75rem) { .wifi-controls__row { flex-direction: column; } }
+@media (min-width: 40rem) { .wifi-mapcell { height: 15rem; } }
+@media (width < 64rem) {
+  .wifi-controls .wifi-filters { display: none; } /* phones: the one filter group lives in the sheet */
+}
+@media (min-width: 64rem) {
+  .wifi-tool {
+    grid-template-columns: 27.5rem minmax(0, 1fr); grid-template-rows: auto auto auto 1fr; column-gap: var(--space-5);
+    grid-template-areas: "head map" "controls map" "listhead map" "list map";
+  }
+  .wifi-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wifi-who { grid-column: 1 / -1; }
+  .wifi-mapcell {
+    position: sticky; top: var(--map-top); align-self: start; margin-top: 0;
+    height: calc(100dvh - var(--map-top) - var(--space-4)); min-height: 30rem;
+  }
+  .wifi-more { display: block; }
+  .wifi-phone { display: none; } /* "Filters", "Show map" */
+}
+
+/* ---------- VenueRow (3.11) ---------- */
+
+.venue {
+  position: relative;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title action" "meta meta" "status status";
+  column-gap: var(--space-3);
+  margin-inline: calc(-1 * var(--space-3)); padding: var(--space-3);
+  transition: background-color var(--dur-1) var(--ease-out);
+}
+/* The hairline keeps the text column; only the fill bleeds 12px (as LinkRow) */
+.venue::before { content: ""; position: absolute; right: var(--space-3); bottom: 0; left: var(--space-3); border-bottom: var(--bw) solid var(--line); }
+.row__title { grid-area: title; align-self: center; font-size: var(--fs-md); line-height: var(--lh-md); font-weight: var(--fw-bold); color: var(--ink); overflow-wrap: anywhere; }
+.row__target { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; text-decoration-thickness: var(--bw); text-underline-offset: 0.18em; }
+button.row__target { cursor: pointer; }
+button.row__target::after { content: ""; position: absolute; inset: 0; } /* the whole row is the target */
+button.row__target:focus-visible { outline: none; }
+.venue:has(.row__target:focus-visible) { outline: var(--focus-w) solid var(--focus); outline-offset: calc(-1 * var(--focus-w)); }
+.row__action { grid-area: action; position: relative; z-index: 1; align-self: start; }
+.row__meta { grid-area: meta; margin-top: var(--space-1); font-size: var(--fs-sm); line-height: var(--lh-sm); color: var(--muted); }
+.row__status { grid-area: status; display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--space-2); margin-top: var(--space-2); }
+.row__date { font-size: var(--fs-sm); line-height: var(--lh-sm); color: var(--muted); font-variant-numeric: tabular-nums; }
+.venue.is-highlighted, .venue[aria-current="true"] { background: var(--surface-2); box-shadow: var(--bar-start); }
+@media (hover: hover) {
+  .venue:hover { background: var(--surface-2); }
+  .venue:hover button.row__target { text-decoration-line: underline; }
+}
+@media (min-width: 64rem) { .venue:focus-within { background: var(--surface-2); box-shadow: var(--bar-start); } }
+
+/* ---------- MapFrame (3.17) ---------- */
+
+.mapframe { position: relative; height: 100%; overflow: hidden; border: var(--bw) solid var(--line); border-radius: var(--r-md); background: var(--surface-2); }
+.mapframe__map { position: absolute; inset: 0; z-index: 0; }
+.mapframe__overlay { position: absolute; inset: 0; z-index: 1; display: flex; align-items: center; justify-content: center; padding: var(--space-4); }
+.mapframe[data-state="ready"] .mapframe__overlay { display: none; }
+.mapframe:not([data-state="error"]) .mapframe__overlay { pointer-events: none; } /* the map stays usable while tiles load */
+.mapframe[data-state="error"] { background: var(--bg); }
+.mapframe[data-state="error"] :is(.mapframe__map, .mapframe__open) { visibility: hidden; } /* "Try again" stays tappable on the band */
+.mapframe[data-state="error"] .legend { display: none; }
+/* Phone band: a transparent button over the inert map opens the full-screen view; swipes scroll the page */
+.mapframe__open { position: absolute; inset: 0; z-index: 2; display: none; width: 100%; cursor: pointer; }
+@media (width < 64rem) {
+  .mapframe:not([data-mode="full"]) .mapframe__open { display: block; }
+  .mapframe:not([data-mode="full"]) .mapframe__map { touch-action: pan-y; }
+}
+.mapframe__area { position: absolute; top: var(--space-4); left: 50%; z-index: 2; translate: -50% 0; background: var(--bg); box-shadow: var(--shadow-1); white-space: nowrap; }
+.mapframe[data-mode="full"] .mapframe__area { left: auto; right: var(--space-3); translate: none; max-width: calc(100% - 15rem); white-space: normal; }
+@media (min-width: 64rem) { .mapframe { border-radius: var(--r-lg); } }
+
+/* Legend: in the band bottom left on two lines; top left and stacked on desktop and the full-screen map */
+.mapframe .legend {
+  position: absolute; left: var(--space-2); bottom: var(--space-2); z-index: 1;
+  display: grid; grid-template-columns: repeat(2, auto); column-gap: var(--space-3); max-width: calc(100% - var(--space-4));
+  padding: var(--space-1) var(--space-3); border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--bg) 92%, transparent); box-shadow: var(--shadow-1);
+  font-size: var(--fs-sm); line-height: var(--lh-sm); color: var(--ink);
+}
+.legend__item { display: flex; align-items: center; gap: var(--space-2); }
+@media (min-width: 40rem) { .mapframe .legend { grid-template-columns: none; grid-auto-flow: column; } }
+.mapframe[data-mode="full"] .legend { top: var(--space-4); bottom: auto; left: var(--space-4); grid-template-columns: auto; grid-auto-flow: row; padding: var(--space-2) var(--space-3); }
+@media (min-width: 64rem) { .mapframe .legend { top: var(--space-4); bottom: auto; left: var(--space-4); grid-template-columns: auto; grid-auto-flow: row; padding: var(--space-2) var(--space-3); } }
+
+/* Leaflet inside the frame: the page's font, tokens and 44px controls */
+.mapframe .leaflet-container { background: var(--surface-2); font-family: var(--font-sans-stack); font-size: var(--fs-sm); line-height: var(--lh-sm); }
+.mapframe .leaflet-container .leaflet-control { margin: 0; }
+.mapframe .leaflet-container .leaflet-control-attribution {
+  padding: 0 var(--space-2); background: color-mix(in srgb, var(--bg) 90%, transparent); color: var(--ink);
+  font-size: var(--fs-sm); line-height: var(--lh-sm);
+}
+.mapframe .leaflet-container .leaflet-control-attribution a { color: var(--action); text-decoration-line: underline; }
+.mapframe .leaflet-container .leaflet-control-zoom {
+  display: flex; flex-direction: column; gap: var(--space-2); margin: 0 var(--space-4) var(--card-h, var(--space-2)) 0;
+  border: 0; border-radius: var(--r-md); box-shadow: none;
+}
+.mapframe .leaflet-bar.leaflet-control-zoom a {
+  display: grid; place-items: center; width: var(--control-sm); height: var(--control-sm);
+  border: var(--bw) solid var(--line-strong); border-radius: var(--r-md); background: var(--bg); color: var(--ink);
+  box-shadow: var(--shadow-1); font-family: var(--font-sans-stack); font-size: var(--fs-md); line-height: var(--lh-md); text-indent: 0;
+}
+.mapframe .leaflet-bar.leaflet-control-zoom a.leaflet-disabled { background: var(--surface-2); color: var(--muted); }
+@media (hover: hover) { .mapframe .leaflet-bar.leaflet-control-zoom a:not(.leaflet-disabled):hover { background: var(--surface-2); } }
+.mapframe .leaflet-bar.leaflet-control-zoom a:focus-visible { outline: var(--focus-w) solid var(--focus); outline-offset: var(--focus-offset); }
+.mapframe .leaflet-container:focus-visible { outline: var(--focus-w) solid var(--focus); outline-offset: calc(-1 * var(--focus-w)); }
+@media (prefers-color-scheme: dark) {
+  .mapframe .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(0.6); }
+}
+
+/* Markers (2.6): 44x44 hit area, the shape centered; selected 1.3 with an ink ring, highlighted a 3px action ring */
+.marker { display: grid; place-items: center; }
+.marker .shape { transition: transform var(--dur-1) var(--ease-out); }
+.marker.is-highlighted .shape--marker { --shape-ring: var(--action); }
+.marker.is-highlighted .shape__plate { stroke-width: 3; }
+.marker.is-selected .shape--marker { --shape-ring: var(--ink); transform: scale(1.3); }
+
+/* ---------- Full-screen map (phones) ---------- */
+
+.wifi-mapsheet__body { position: relative; flex: 1; min-height: 0; }
+.wifi-mapsheet .mapframe { border: 0; border-radius: var(--r-none); }
+
+/* ---------- PlaceCard (3.18) ---------- */
+
+.placecard {
+  position: absolute; left: var(--space-4); bottom: var(--space-4); z-index: 3;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-2);
+  width: calc(100% - var(--space-6)); max-width: 22rem; padding: var(--space-4);
+  border-radius: var(--r-lg); background: var(--bg); color: var(--ink); box-shadow: var(--shadow-1);
+}
+.placecard__title { grid-column: 1; align-self: center; font-size: var(--fs-lg); line-height: var(--lh-lg); overflow-wrap: anywhere; }
+.placecard__close { grid-column: 2; grid-row: 1; align-self: start; margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-2)) 0 0; }
+.placecard > .row__meta, .placecard > .row__status { grid-area: auto / 1 / auto / -1; margin-top: var(--space-2); }
+.placecard__actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-5); margin-top: var(--space-3); }
+.mapframe[data-mode="full"] .placecard {
+  left: var(--space-3); bottom: calc(var(--space-2) + var(--lh-sm) + env(safe-area-inset-bottom));
+  width: calc(100% - var(--space-5)); max-width: none;
+}
+@media (min-width: 64rem) { .placecard__tolist { display: none; } }
+
+/* ---------- Hub hero and city mix (UI-REVIEW-final issue 5) ---------- */
+.wifi-mix { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin-top: var(--space-2); font-size: var(--fs-sm); line-height: var(--lh-sm); color: var(--muted); }
+.wifi-mix__item { display: inline-flex; align-items: center; gap: var(--space-1); }
+.wifi-mix__item--free { color: var(--good); font-weight: var(--fw-bold); }
+@media (min-width: 64rem) {
+  .wifi-hero {
+    display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); column-gap: var(--space-7); align-items: start;
+    grid-template-areas: "near pick" "search pick" ". pick";
+  }
+  .wifi-hero > .wifi-near { grid-area: near; flex-direction: column; align-items: flex-start; }
+  .wifi-hero > .wifi-search { grid-area: search; }
+  .wifi-hero > .wifi-pick { grid-area: pick; margin-top: 0; }
+  .wifi-hero .wifi-cities { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

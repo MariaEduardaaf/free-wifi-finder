@@ -1,0 +1,67 @@
+---
+// site-pages 8.5. Steps mirror each tool's "How it works" (sleep.md, nap.md, wifi-city.md 8 and 10.1, recipes.md).
+// Every tool's "How it works" links here. "Reviewed by" only with a real SITE.editor.
+import ContentPage from '../layouts/ContentPage.astro';
+import SourceList, { type Source } from '../components/ui/SourceList.astro';
+import ExtLink from '../components/ui/ExtLink.astro';
+import { WIFI_DATA_DATE } from '../data/shared';
+import { SITE } from '../site';
+
+const toc = [
+  { id: 'standards', label: 'Our standards' },
+  { id: 'wifi', label: 'Free WiFi finder' },
+  { id: 'corrections', label: 'Corrections' },
+];
+const H = Object.fromEntries(toc.map((t) => [t.id, t.label])); // headings and "On this page" share one list
+
+const refreshed = new Date(`${WIFI_DATA_DATE}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+
+const wifiSources: Source[] = [
+  { title: 'OpenStreetMap', publisher: 'OpenStreetMap Foundation', href: 'https://www.openstreetmap.org/' },
+  { title: 'Key:internet_access', publisher: 'OpenStreetMap Wiki', href: 'https://wiki.openstreetmap.org/wiki/Key:internet_access' },
+  { title: 'Key:check_date', publisher: 'OpenStreetMap Wiki', href: 'https://wiki.openstreetmap.org/wiki/Key:check_date' },
+];
+---
+<ContentPage
+  title={`How the Free WiFi Finder Works | ${SITE.name}`}
+  description={`The method and sources behind the free WiFi finder, and what it can’t know.`}
+  path="/method/"
+  h1="How the WiFi finder works"
+  lede="Where the places come from, how we sort them, and what a listing can’t tell you."
+  updated="2026-10-12"
+  reviewedBy={SITE.editor}
+  toc={toc}
+>
+  <section class="section prose" aria-labelledby="standards">
+    <h2 id="standards">{H.standards}</h2>
+    <ul>
+      <li>We cite the original data set, OpenStreetMap, and link to every place’s record.</li>
+      <li>Ads never change results. No place pays to appear.</li>
+      <li>We say what a tool can’t know, right next to its answer.</li>
+      <li>We fix mistakes when you tell us: <a href="/contact/">contact us</a> or use Report a problem on a place.</li>
+      <li>Every page shows when it was last updated.</li>
+    </ul>
+  </section>
+
+
+  <section class="section prose" aria-labelledby="wifi">
+    <h2 id="wifi">{H.wifi}</h2>
+    <p>Every place comes from OpenStreetMap, the free map that volunteers keep up to date. We list named places that are tagged with WiFi and that anyone can walk into.</p>
+    <ol>
+      <li>We ask OpenStreetMap for places in each city that are tagged with WiFi internet access.</li>
+      <li>We keep named places that are open to the public. We leave out offices, schools and colleges, private rentals, care facilities, transit lines, and anything marked closed or private, so every listing is somewhere you can walk in.</li>
+      <li>We read the fee tag: “no fee” becomes Free for everyone, “customers” or “yes” becomes Customers only, and no tag becomes Ask staff.</li>
+      <li>We sort free places first and show when someone last checked each place, if it’s recorded.</li>
+    </ol>
+    <p>Hotels and other places to stay show Customers only (guests), because their WiFi is for people staying there; waiting rooms such as clinics and car repair shops show Customers only.</p>
+    <p>A tag can be old or wrong, so treat a listing as a lead and ask staff.</p>
+    <p>Data refreshed <time datetime={WIFI_DATA_DATE}>{refreshed}</time>. Place data <ExtLink href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</ExtLink>.</p>
+    <SourceList sources={wifiSources} id="wifi-sources" />
+  </section>
+
+
+  <section class="section prose" aria-labelledby="corrections">
+    <h2 id="corrections">{H.corrections}</h2>
+    <p>Tell us what’s wrong on the <a href="/contact/">contact page</a>. For a WiFi place, Report a problem fixes it at the source, OpenStreetMap, so it’s corrected for everyone after our next refresh.</p>
+  </section>
+</ContentPage>

@@ -1,0 +1,147 @@
+---
+// WiFi city page (specs/wifi-city.md). Every count and sentence below is computed from the city's data.
+import ToolLayout from '../../layouts/ToolLayout.astro';
+import AdSlot from '../../components/ui/AdSlot.astro';
+import Faq from '../../components/ui/Faq.astro';
+import Icon from '../../components/ui/Icon.astro';
+import LinkRow from '../../components/ui/LinkRow.astro';
+import CityExplorer from '../../components/wifi/CityExplorer.astro';
+import { catPlural } from '../../components/wifi/labels';
+import { mostly, type Place } from '../../components/wifi/sort';
+import { faqJsonLd, type FaqItem } from '../../components/ui/jsonld';
+import { WIFI_DATA_DATE } from '../../data/shared';
+import { SITE, SIBLINGS } from '../../site';
+import cities from '../../data/wifi/cities.json';
+
+export function getStaticPaths() {
+  return cities.map((c) => ({ params: { city: c.slug }, props: { city: c } }));
+}
+
+const files = import.meta.glob<{ default: Place[] }>('../../data/wifi/*-*.json', { eager: true });
+const placesOf = (slug: string) => files[`../../data/wifi/${slug}.json`].default;
+
+const { city } = Astro.props;
+const label = `${city.name}, ${city.state}`;
+// Rows show the street; the page's own city is dropped from addresses (wifi-city 10.2)
+const street = (a: string) => (a === city.name ? '' : a.endsWith(`, ${city.name}`) ? a.slice(0, -(city.name.length + 2)) : a);
+const places: Place[] = placesOf(city.slug).map(({ id, name, lat, lon, category, address, fee, lastEdited }) => ({
+  id, name, lat, lon, category, address: street(address), fee, lastEdited,
+}));
+
+const n = places.length;
+const count = (f: (p: Place) => boolean) => places.filter(f).length;
+const free = count((p) => p.fee === 'free');
+const customers = count((p) => p.fee === 'customers');
+const unknown = count((p) => p.fee === 'unknown');
+const libraries = count((p) => p.fee === 'free' && p.category === 'library');
+const dated = places.map((p) => p.lastEdited).filter((d): d is string => Boolean(d)).sort();
+const UPDATED = '2026-10-12'; // when this page's copy last changed
+const day = (iso: string, month: 'long' | 'short') =>
+  new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', { month, day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+const newestMonth = dated.length
+  ? new Date(`${dated.at(-1)!.slice(0, 7).padEnd(7, '-01')}-15T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+  : '';
+const kinds = mostly(places).map((g) => catPlural(g));
+const mostlyText = kinds.join(' and ');
+
+// "About free WiFi in {City}": editorial sentences, no tallies in parentheses (DESIGN-SYSTEM 6, rule 8)
+const libClause = libraries >= 2 ? `, including ${libraries} libraries` : libraries === 1 ? ', including one library' : '';
+const p1 = free === 0
+  ? `None of the places in ${city.name} say their WiFi is free for everyone yet.`
+  : free === 1
+    ? `One place in ${city.name} says its WiFi is free for everyone${libClause}. It’s at the top of the list.`
+    : `${free} places in ${city.name} say their WiFi is free for everyone${libClause}. They’re at the top of the list.`;
+const p2 = (customers === 1
+  ? 'Another place keeps its WiFi for customers or hotel guests, so plan to buy something or ask at the desk.'
+  : `Another ${customers} keep their WiFi for customers or hotel guests, so plan to buy something or ask at the desk.`)
+  + (unknown === 1
+    ? ' The other place doesn’t say who can use it; ask staff before you settle in.'
+    : ` The other ${unknown} don’t say who can use it; ask staff before you settle in.`);
+const p3 = dated.length
+  ? `${dated.length} listings show when someone last checked them on OpenStreetMap, most recently in ${newestMonth}. Places change, so treat any listing as a good lead rather than a promise.`
+  : 'Places change, so treat any listing as a good lead rather than a promise.';
+
+const faq: FaqItem[] = [
+  [`Where can I find free WiFi in ${city.name}?`, `Start with the places marked Free for everyone. There are ${free} in ${city.name}${mostlyText ? `, mostly ${mostlyText}` : ''}. Use Find places near me to see the closest ones first.`],
+  ['What does Ask staff mean?', 'The listing doesn’t say who can use the WiFi. Many of these places do offer it, so ask at the counter before you settle in.'],
+  ['Why do hotels say Customers only (guests)?', 'Hotels that list free WiFi usually mean free for their guests, not for anyone walking in. If you’re not staying there, ask at the front desk.'],
+  ['How current is this list?', `We refresh it from OpenStreetMap, most recently on ${day(WIFI_DATA_DATE, 'long')}. Each place shows when someone last checked it, if anyone recorded it.`],
+];
+
+const others = cities
+  .filter((c) => c.slug !== city.slug)
+  .sort((a, b) => a.name.localeCompare(b.name, 'en') || a.state.localeCompare(b.state, 'en')) // DESIGN-SYSTEM 4.9
+  .map((c) => {
+    const ps = placesOf(c.slug);
+    return { href: `/${c.slug}/`, title: `${c.name}, ${c.state}`, line: `${ps.length} places, ${ps.filter((p) => p.fee === 'free').length} free for everyone` };
+  });
+
+const SOURCES = [
+  { href: 'https://wiki.openstreetmap.org/wiki/Key:internet_access', title: 'Key:internet_access', publisher: 'OpenStreetMap Wiki' },
+  { href: 'https://wiki.openstreetmap.org/wiki/Key:check_date', title: 'Key:check_date', publisher: 'OpenStreetMap Wiki' },
+];
+---
+<ToolLayout
+  title={`Free WiFi in ${label}: ${n} Places, ${free} Free for Everyone | ${SITE.name}`}
+  description={`${n} places with public WiFi in ${label}, from OpenStreetMap. ${free} say they’re free for everyone. Filter by type of place or sort by distance. Free, no account.`}
+  path={`/${city.slug}/`}
+  breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Free WiFi finder', href: '/' }, { label }]}
+  jsonLd={[faqJsonLd(faq)]}
+  trust={[
+    { icon: 'circle-check', text: 'Free, no account' },
+    { icon: 'clock', text: `Data from OpenStreetMap, refreshed ${day(WIFI_DATA_DATE, 'short')}` },
+    { icon: 'circle-check', text: 'Your location stays on this device' },
+    { icon: 'info', text: 'How we find places', href: '#how-it-works' },
+  ]}
+  toc={[
+    { id: 'about', label: `About free WiFi in ${city.name}` },
+    { id: 'how-it-works', label: 'How we find places' },
+    { id: 'faq', label: 'Questions people ask' },
+    { id: 'other-cities', label: 'Free WiFi in other cities' },
+  ]}
+  adId="wifi-city-rail"
+  related={SIBLINGS}
+>
+  <CityExplorer city={city} places={places} />
+
+  <Fragment slot="content">
+    <section class="section prose" aria-labelledby="about">
+      <h2 id="about">About free WiFi in {city.name}</h2>
+      <p>{p1}</p>
+      <p>{p2}</p>
+      <p>{p3}</p>
+    </section>
+
+    <AdSlot variant="inline" id="wifi-city-inline" />
+
+    <section class="section prose" aria-labelledby="how-it-works">
+      <h2 id="how-it-works">How we find places</h2>
+      <p>Every place comes from OpenStreetMap, the free map that volunteers keep up to date. We list named places in {city.name} that are tagged with WiFi and that anyone can walk into.</p>
+      <ol>
+        <li>We ask OpenStreetMap for places in {city.name} tagged with WiFi internet access.</li>
+        <li>We keep named places that are open to the public, and leave out offices, schools and colleges, private rentals, care facilities, transit lines and anything marked closed or private.</li>
+        <li>We read the fee tag: “no fee” becomes Free for everyone, “customers” or “yes” becomes Customers only, and no tag becomes Ask staff. Hotels and other places to stay usually keep WiFi for their guests, so they show Customers only (guests), and waiting rooms such as clinics and car repair shops show Customers only.</li>
+        <li>We sort free places first and show when someone last checked each place, if it’s recorded.</li>
+      </ol>
+      <div class="sources-block">
+        <h3>Sources</h3>
+        <ol class="sources">
+          <li><a href="https://www.openstreetmap.org/" target="_blank" rel="noopener">OpenStreetMap<span class="sr-only">, opens openstreetmap.org in a new tab</span><Icon name="external-link" size={16} /></a>. Data © OpenStreetMap contributors, <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">Open Database License<span class="sr-only">, opens openstreetmap.org in a new tab</span><Icon name="external-link" size={16} /></a>.</li>
+          {SOURCES.map((s) => <li><a href={s.href} target="_blank" rel="noopener">{s.title}<span class="sr-only">, opens wiki.openstreetmap.org in a new tab</span><Icon name="external-link" size={16} /></a>. {s.publisher}.</li>)}
+        </ol>
+        <p class="byline">Data refreshed <time datetime={WIFI_DATA_DATE}>{day(WIFI_DATA_DATE, 'long')}</time>. Last updated <time datetime={UPDATED}>{day(UPDATED, 'long')}</time>.{SITE.editor && ` Reviewed by ${SITE.editor}.`}</p>
+      </div>
+      <p><a class="hit" href="/method/#wifi">Read the full method</a></p>
+    </section>
+
+    <section class="section" aria-labelledby="faq">
+      <h2 id="faq">Questions people ask</h2>
+      <Faq items={faq} />
+    </section>
+
+    <section class="section" aria-labelledby="other-cities">
+      <h2 id="other-cities">Free WiFi in other cities</h2>
+      <ul class="linkrows">{others.map((o) => <li><LinkRow href={o.href} icon="wifi" title={o.title} line={o.line} /></li>)}</ul>
+    </section>
+  </Fragment>
+</ToolLayout>

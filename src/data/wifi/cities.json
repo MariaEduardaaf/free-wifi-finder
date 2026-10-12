@@ -1,0 +1,42 @@
+[
+ {
+  "name": "Austin",
+  "state": "TX",
+  "slug": "austin-tx",
+  "count": 238,
+  "center": [
+   30.2672,
+   -97.7431
+  ]
+ },
+ {
+  "name": "San Francisco",
+  "state": "CA",
+  "slug": "san-francisco-ca",
+  "count": 239,
+  "center": [
+   37.7749,
+   -122.4194
+  ]
+ },
+ {
+  "name": "Chicago",
+  "state": "IL",
+  "slug": "chicago-il",
+  "count": 546,
+  "center": [
+   41.8781,
+   -87.6298
+  ]
+ },
+ {
+  "name": "Seattle",
+  "state": "WA",
+  "slug": "seattle-wa",
+  "count": 302,
+  "center": [
+   47.6062,
+   -122.3321
+  ]
+ }
+]

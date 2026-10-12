@@ -1,0 +1,199 @@
+---
+// WiFi hub (specs/wifi-hub.md): find the nearest city or pick one. Counts come from each city's data.
+import ToolLayout from '../layouts/ToolLayout.astro';
+import AdSlot from '../components/ui/AdSlot.astro';
+import Button from '../components/ui/Button.astro';
+import Card from '../components/ui/Card.astro';
+import EmptyState from '../components/ui/EmptyState.astro';
+import Faq from '../components/ui/Faq.astro';
+import TextField from '../components/ui/TextField.astro';
+import { statusShape, type Status } from '../components/ui/icons';
+import { faqJsonLd, type FaqItem } from '../components/ui/jsonld';
+import { catPlural } from '../components/wifi/labels';
+import { mostly, type Place } from '../components/wifi/sort';
+import { WIFI_DATA_DATE } from '../data/shared';
+import { SITE, SIBLINGS } from '../site';
+import cities from '../data/wifi/cities.json';
+import '../components/wifi/wifi.css';
+
+const files = import.meta.glob<{ default: Place[] }>('../data/wifi/*-*.json', { eager: true });
+const byName = [...cities].sort((a, b) => a.name.localeCompare(b.name, 'en') || a.state.localeCompare(b.state, 'en')); // DS 4.9
+const rows = byName.map((c) => {
+  const places = files[`../data/wifi/${c.slug}.json`].default;
+  const kinds = mostly(places).map((g) => catPlural(g));
+  return {
+    ...c,
+    n: places.length,
+    free: places.filter((p) => p.fee === 'free').length,
+    customers: places.filter((p) => p.fee === 'customers').length,
+    unknown: places.filter((p) => p.fee === 'unknown').length,
+    mostly: kinds.length === 2 ? `Free places are mostly ${kinds[0]} and ${kinds[1]}.`
+      : kinds.length === 1 ? `Free places are mostly ${kinds[0]}.`
+      : 'None of these places say they’re free for everyone yet.',
+  };
+});
+const names = byName.map((c) => c.name);
+const cityList = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names.join('');
+const day = (month: 'long' | 'short') =>
+  new Date(`${WIFI_DATA_DATE}T12:00:00Z`).toLocaleDateString('en-US', { month, day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+
+const STATUSES: [Status, string, string][] = [
+  ['free', 'Free for everyone:', ' the listing says the WiFi is free.'],
+  ['customers', 'Customers only:', ' you need to buy something first. Hotels and other places to stay show Customers only (guests), because their WiFi is for people staying there.'],
+  ['unknown', 'Ask staff:', ' the listing doesn’t say who can use it, so ask at the counter.'],
+];
+
+const faq: FaqItem[] = [
+  ['Is the WiFi really free?', 'Places marked Free for everyone say so on OpenStreetMap. Customers only places expect you to buy something or to be a guest. Ask staff means the listing doesn’t say, so check at the counter.'],
+  ['How current is this list?', `We refresh it from OpenStreetMap, most recently on ${day('long')}. Many listings also show when someone last checked them.`],
+  ['Is public WiFi safe to use?', 'Treat it as public. Use sites whose address starts with https, avoid banking on networks you don’t trust, and turn off file sharing. The Federal Trade Commission has a short guide on consumer.ftc.gov.'],
+  ['Can I add a place or fix a mistake?', 'Yes. The list comes from OpenStreetMap, so you can add or correct a place there, or use Report a problem on any place. Fixes appear here after our next refresh.'],
+];
+// The browser picks the nearest city; nothing is sent anywhere (wifi-hub 10)
+const geo = JSON.stringify(byName.map((c) => ({ label: `${c.name}, ${c.state}`, slug: c.slug, center: c.center })));
+---
+<ToolLayout
+  title={`Free Public WiFi: Libraries, Cafes and More in ${cities.length} US Cities | ${SITE.name}`}
+  description={`Find places that offer WiFi to the public in ${cityList}: libraries, cafes, restaurants and more. Free, no account, no app.`}
+  path="/"
+  h1="Find free public WiFi"
+  lede={`Places that offer WiFi to the public in ${cityList}.`}
+  jsonLd={[faqJsonLd(faq)]}
+  trust={[
+    { icon: 'circle-check', text: 'Free, no account' },
+    { icon: 'clock', text: `Data from OpenStreetMap, refreshed ${day('short')}` },
+    { icon: 'info', text: 'How we find places', href: '#how-it-works' },
+  ]}
+  toc={[]}
+  adId=""
+  related={SIBLINGS}
+  class="wifi-content"
+>
+  <div class="wifi-hero">
+  <div class="wifi-near js-only">
+    <Button variant="primary" icon="locate-fixed" id="near">Find free WiFi near me</Button>
+    <p class="status" id="near-status" role="status">Uses your location once to pick the nearest city. It stays on this device.</p>
+  </div>
+  <TextField id="city-q" label="Search by city or state" type="search" icon="search" placeholder="e.g. Seattle or WA" autocomplete="off" class="wifi-search js-only" />
+  <p class="sr-only" id="city-count" role="status"></p>
+
+  <section class="wifi-pick" aria-labelledby="pick-title">
+    <h2 id="pick-title">Pick a city</h2>
+    <div id="cities-wrap">
+      <ul class="wifi-cities" id="cities">
+        {rows.map((c) => (
+          <li data-q={`${c.name} ${c.state}`.toLowerCase()}>
+            <Card href={`/${c.slug}/`} title={`${c.name}, ${c.state}`}>
+              <p class="card__line"><span class="num">{c.n}</span> places</p>
+              <!-- The map's status code in miniature: shape plus count, so each city reads at a glance (UI-REVIEW-final issue 5). -->
+              <p class="wifi-mix">
+                <span class="wifi-mix__item wifi-mix__item--free"><Fragment set:html={statusShape('free', 16)} /><span class="num">{c.free}</span><span class="sr-only"> free for everyone,</span></span>
+                <span class="wifi-mix__item wifi-mix__item--customers"><Fragment set:html={statusShape('customers', 16)} /><span class="num">{c.customers}</span><span class="sr-only"> customers only,</span></span>
+                <span class="wifi-mix__item"><Fragment set:html={statusShape('unknown', 16)} /><span class="num">{c.unknown}</span><span class="sr-only"> ask staff</span></span>
+              </p>
+              <p class="card__meta">{c.mostly}</p>
+            </Card>
+          </li>
+        ))}
+      </ul>
+      <div id="cities-empty" hidden>
+        <EmptyState icon="search" title="No city matches" body={`We cover ${cityList} so far.`}>
+          <Fragment slot="actions">
+            <Button variant="quiet" size="sm" id="city-clear">Clear search</Button>
+            <Button variant="quiet" size="sm" href="/contact/">Tell us which city to add</Button>
+          </Fragment>
+        </EmptyState>
+      </div>
+    </div>
+    <p>We cover {cities.length} cities so far. <a href="/contact/">Tell us which one to add next.</a></p>
+  </section>
+  </div>
+
+  <Fragment slot="content">
+    <section class="section prose" aria-labelledby="how-it-works">
+      <h2 id="how-it-works">How we find places</h2>
+      <p>Every place comes from OpenStreetMap, the free map that volunteers keep up to date. We list named places that are tagged with WiFi and that anyone can walk into, such as cafes, libraries and restaurants. We leave out offices, schools and colleges, private rentals, care facilities, transit lines and anything marked closed or private, and we never list home networks.</p>
+      <ul class="wifi-statuslist">
+        {STATUSES.map(([s, term, text]) => <li><Fragment set:html={statusShape(s, 16, 'shape--marker')} /><span><strong>{term}</strong>{text}</span></li>)}
+      </ul>
+      <p>Data refreshed {day('long')}. Place data <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>. <a href="/method/#wifi">Read the full method</a>.</p>
+    </section>
+
+    <AdSlot variant="inline" id="wifi-hub-inline" />
+    <AdSlot variant="leaderboard" id="wifi-hub-leaderboard" />
+
+    <section class="section" aria-labelledby="faq">
+      <h2 id="faq">Questions people ask</h2>
+      <Faq items={faq} />
+    </section>
+  </Fragment>
+</ToolLayout>
+
+<script type="application/json" id="wifi-cities" set:html={geo} />
+
+<script>
+  import { setStatus } from '../components/ui/status';
+  import { icon } from '../components/ui/icons';
+  import { miles } from '../components/wifi/sort';
+
+  const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
+  const cities = JSON.parse($('wifi-cities').textContent!) as { label: string; slug: string; center: [number, number] }[];
+
+  // ---------- Search: cards filter live; the zero state keeps the grid's height so the ad below never rises ----------
+  const q = $<HTMLInputElement>('city-q'), wrap = $('cities-wrap'), grid = $('cities'), empty = $('cities-empty'), count = $('city-count');
+  const items = [...grid.querySelectorAll<HTMLLIElement>('li')];
+  function search() {
+    const t = q.value.trim().toLowerCase();
+    if (t && !wrap.style.minHeight) wrap.style.minHeight = `${wrap.offsetHeight}px`;
+    if (!t) wrap.style.minHeight = '';
+    let n = 0;
+    for (const li of items) { const ok = li.dataset.q!.includes(t); li.hidden = !ok; if (ok) n++; }
+    grid.hidden = n === 0;
+    empty.hidden = n > 0;
+    empty.querySelector('.empty__title')!.textContent = `No city matches “${q.value.trim()}”`;
+    count.textContent = !t ? '' : n === 1 ? '1 city matches.' : `${n} cities match.`;
+  }
+  q.addEventListener('input', search);
+  $('city-clear').addEventListener('click', () => { q.value = ''; search(); q.focus(); });
+
+  // ---------- Find free WiFi near me: nearest city within 50 miles opens with ?sort=near ----------
+  const btn = $<HTMLButtonElement>('near'), status = $('near-status');
+  const HELP = status.textContent!;
+  function busy(on: boolean) {
+    btn.disabled = on;
+    on ? btn.setAttribute('aria-busy', 'true') : btn.removeAttribute('aria-busy');
+    btn.querySelector('svg')!.outerHTML = on ? icon('loader-circle', 20, 'btn__spinner') : icon('locate-fixed');
+    btn.querySelector('span')!.textContent = on ? 'Finding your location…' : 'Find free WiFi near me';
+  }
+  const say = (text: string) => { status.setAttribute('role', 'status'); status.className = 'status'; status.textContent = text; };
+  const fail = (text: string, retry?: boolean) => {
+    status.setAttribute('role', 'alert');
+    setStatus(status, 'error', text, retry ? { label: 'Try again', onClick: locate } : undefined);
+  };
+  function locate() {
+    busy(true);
+    say(HELP);
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        const near = cities
+          .map((c) => ({ c, mi: miles(coords.latitude, coords.longitude, c.center[0], c.center[1]) }))
+          .sort((a, b) => a.mi - b.mi)[0];
+        if (near.mi <= 50) {
+          say(`Opening ${near.c.label}…`);
+          location.href = `/${near.c.slug}/?sort=near`;
+          return;
+        }
+        busy(false);
+        say(`None of our cities is near you yet. The closest is ${near.c.label}, about ${(Math.round(near.mi / 10) * 10).toLocaleString('en-US')} miles away. Pick a city below.`);
+      },
+      (err) => {
+        busy(false);
+        if (err.code === err.PERMISSION_DENIED) fail('Location is off for this site. You can turn it on in your browser settings, or pick a city below.');
+        else fail('We couldn’t get your location. Try again, or pick a city below.', true);
+      },
+      { timeout: 10000, maximumAge: 300000 },
+    );
+  }
+  if ('geolocation' in navigator) btn.addEventListener('click', locate);
+  else btn.closest('.wifi-near')!.remove();
+</script>
